@@ -15,21 +15,22 @@
 #define NBINSMAX 1000
 #define BINCONTENTSMAXMAX 1000
 #define ISIMMAXMAX 1000000 /*NBINSMAX * BINCONTENTSMAXMAX */
+#define TAUMAX 1000000
 
 struct paramsOUWeightedEnsemble{
-	int tau; 
+	int tau; //In units of dt: e.g. if dt=.01, tau=.1, then this value should be .1/.01 = 10;
 	int repsPerBin;
-	int tauMax;
+	int tauMax; //Number of weighted ensemble steps to do, max sim time. If tauMax = 1000, tau = 10, dt = .005, then sim will end at t=tauMax*tau*dt = 50;
 	int nBins;
 	int fluxBin;
 	double binDefs[];
-}
+};
 
 struct paramsOUDynamicsEngine{
 	double dt;
 	double tauSlow;
 	double sigmaX;
-}
+};
 
 struct replicas{
 	double sims[ISIMMAXMAX];
@@ -39,13 +40,13 @@ struct replicas{
 	int binContentsMax[NBINSMAX];
 	int binContents[BINCONTENTSMAXMAX][NBINSMAX];
 	int iSimMax;
-}
+};
 
 double dynamicsEngine(double x, struct paramsOUDynamicsEngine paramsDE, struct paramsOUWeightedEnsemble paramsWE){
 	double U1, U2, Z1, Z2;
 	double xOut;
 	xOut = x;
-	for(nt = 0; nt < tauMax; nt++;){
+	for(int nt = 0; nt < paramsWE.tauMax; nt++){
 		U1 = RAND;
 		U2 = RAND;
 		Z1 = sqrt(-2*log(U1))*cos(2*PI*U2);
@@ -58,19 +59,18 @@ double dynamicsEngine(double x, struct paramsOUDynamicsEngine paramsDE, struct p
 int findBin(double rep, int nBins, struct paramsOUWeightedEnsemble paramsWE){
 	/*Rewritten to only return a single integer for a single simulation (new binLocs for that index). 
 	In main, we will completely rewrite the table of contents each time.*/
-	int alreadyIn;
 	int binInside;
-		for(iBin = 0; iBin < nBins; iBin++){
+		for(int iBin = 0; iBin < nBins; iBin++){
 			if((rep < paramsWE.binDefs[iBin+1]) && (rep > paramsWE.binDefs[iBin])){
 				binInside = iBin;
-				iBin = nBins
+				iBin = nBins;
 			}
 		}
 		
 	return binInside;
 }
 
-void initialDistOU(struct paramsOUDynamicsEngine params, int nInit, struct replicas repsInit){
+void initialDistOU(struct paramsOUWeightedEnsemble params, int nInit, struct replicas repsInit){
 	/* 
 	This function currently sets the initial replicas to all be at x = 0.
 	Obviously needs to be changed to actually draw random numbers if we want to take from the true dist.
@@ -78,15 +78,15 @@ void initialDistOU(struct paramsOUDynamicsEngine params, int nInit, struct repli
 	*/
 	
 	double startLocation = 0; //Can Call 
-	int startBin = findBin(startLocation); //
+	int startBin = findBin(startLocation,params.nBins,params); //
 
 	
 	/*117-119 is also unnecessary, sets values for locations that don't need to be set, 120 is necessary*/
-	for(jBins = 0; jBins<nBins; jBins++){
+	for(int jBins = 0; jBins<params.nBins; jBins++){
 		repsInit.binContentsMax[jBins] = 0;
 	}
 	
-	for(j = 0; j < nInit; j++){
+	for(int j = 0; j < nInit; j++){
 		repsInit.sims[j] = startLocation;
 		repsInit.weights[j] = 1/nInit;
 		repsInit.binLocs[j] = startBin;
@@ -110,43 +110,25 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 	int mergeInd[2]; /* Array containing indices of 2 elements to be merged*/
 	int keptInd[2]; /*Previous array, reordered s.t. the first index is the one that will be kept*/
 	int splitInd; /* Index of replica to split*/
-	int loopIndex = 0; /* Dummy for checking how many times a merge / split loop operates */
+	//int loopIndex = 0; /* Dummy for checking how many times a merge / split loop operates */
 	
-	double p0, p1; /*Doubles giving the merge probabilities*/
+	double p0; /*Doubles giving the merge probabilities*/
 	double randPull; /*Double storing a pull from RAND*/
 	
 	
-	/* First, find the bins that we're looking through*/
-	/*The code from here until the merging loop is unnecessary*/
-	for(jBins = 0; jBins < nBins; jBins++){
-		if((currentReps.BinContentsMax[jBins] > 0) &&(binMax > jBins) ){
-			binMax = jBins;
-		}
-		if((currentReps.BinContentsMax[(nBins-jBins-1)] > 0) &&(binMin > (nBins-jBins-1))){
-			binMin = nBins-jBins-1;
-		}
-	}
-	if(binMax < binMin){
-		fprintf(stdout, 'ERROR: binMax < binMin');
-		return;
-	}
-	if(binMax == binMin){
-		binMax++;
-	}
-	
-	
 	/*Merging loop*/
-	for(mergeBin = binMin; mergeBin <binMax; mergeBin++){
+	for(int mergeBin = binMin; mergeBin <binMax; mergeBin++){
 		/*Initialize the merge indices with the first 2 indices stored in appropriate BinContents row*/
 
 		
 		
-		while((currentReps.BinContentsMax[mergeBin]>params.repsPerBin) && currentReps.BinContentsMax[mergeBin] > 0){
-			mergeInd = {currentReps.BinContents[0][mergeBin],currentReps.BinContents[1][mergeBin]};
+		while((currentReps.binContentsMax[mergeBin]>params.repsPerBin) && currentReps.binContentsMax[mergeBin] > 0){
+			mergeInd[0] = currentReps.binContents[0][mergeBin];
+			mergeInd[1] = currentReps.binContents[1][mergeBin];
 			/*Find the locations of the two smallest weights and combine them together*/
-			for(repInBin = 0; repInBin < NUM_ROWS(currentReps.BinContents);repInBin++){ //NUM_Rows needs to change to an appropriate BCM statement
+			for(int repInBin = 0; repInBin < currentReps.binContentsMax[mergeBin];repInBin++){ //NUM_Rows needs to change to an appropriate BCM statement
 				
-				dummyInd = currentReps.BinContents[repInBin][mergeBin];
+				dummyInd = currentReps.binContents[repInBin][mergeBin];
 				/*If the weight of this index is greater than the weight in the first merge index,
 				but smaller than the weight in the second index, then replace the first merge index with the new index
 				
@@ -188,7 +170,7 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 			currentReps.binLocs[keptInd[1]] = currentReps.binLocs[currentReps.iSimMax];
 			
 			/*Find iSimMax in binContents and replace it with keptInd[1]*/
-			for(iSimMaxReplace = 0; iSimMaxReplace < currentReps.BinContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++;){
+			for(int iSimMaxReplace = 0; iSimMaxReplace < currentReps.binContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++){
 				if(currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] == currentReps.iSimMax){
 					currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] = keptInd[1];
 				}
@@ -203,18 +185,18 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 			/*Reorganize the binContents matrix*/
 			currentReps.binContents[rowCol[2]][mergeBin] = currentReps.binContents[currentReps.binContentsMax[mergeBin]][mergeBin];
 			currentReps.binContents[currentReps.binContentsMax[mergeBin]][mergeBin] = NAN;
-			currentReps.binContentsMax--;
+			currentReps.binContentsMax[mergeBin]--;
 		}
 	}
 	
 	
 	/*Splitting Loop*/
-	for(splitBin = binMin; splitBin < binMax; splitBin++){
+	for(int splitBin = binMin; splitBin < binMax; splitBin++){
 
-		while((currentReps.BinContentsMax[splitBin]<params.repsPerBin)&&(currentReps.BinContentsMax[splitBin]>0)){
-			splitInd = currentReps.BinContents[0][splitBin];
-			for(repInBin = 0; repInBin < NUM_ROWS(currentReps.BinContents);repInBin++){
-				dummyInd = currentReps.BinContents[repInBin][mergeBin];
+		while((currentReps.binContentsMax[splitBin]<params.repsPerBin)&&(currentReps.binContentsMax[splitBin]>0)){
+			splitInd = currentReps.binContents[0][splitBin];
+			for(int repInBin = 0; repInBin < currentReps.binContentsMax[splitBin];repInBin++){
+				dummyInd = currentReps.binContents[repInBin][splitBin];
 				if(currentReps.weights[dummyInd]>currentReps.weights[splitInd]){
 					splitInd = dummyInd;
 				}
@@ -234,9 +216,8 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 double fluxes(struct replicas currentReps, struct paramsOUWeightedEnsemble paramsWE){
 	double fluxOut = 0;
 	int nFlux = currentReps.binContentsMax[paramsWE.fluxBin];
-	//This function contains too many loops and can be rewritten to only loop through the appropriate column of BinContents
 	
-	for(iReps = 0; iReps < nFlux; iReps++){
+	for(int iReps = 0; iReps < nFlux; iReps++){
 		if(currentReps.binLocs[iReps] == paramsWE.fluxBin){
 			fluxOut = fluxOut + currentReps.weights[currentReps.binContents[iReps][paramsWE.fluxBin]];
 			currentReps.sims[currentReps.binContents[iReps][paramsWE.fluxBin]] = currentReps.sims[currentReps.iSimMax];
@@ -244,7 +225,7 @@ double fluxes(struct replicas currentReps, struct paramsOUWeightedEnsemble param
 			currentReps.binLocs[currentReps.binContents[iReps][paramsWE.fluxBin]] = currentReps.binLocs[currentReps.iSimMax];
 			
 			/*Find iSimMax in binContents and replace it with keptInd[1]*/
-			for(iSimMaxReplace = 0; iSimMaxReplace < currentReps.BinContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++;){
+			for(int iSimMaxReplace = 0; iSimMaxReplace < currentReps.binContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++){
 				if(currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] == currentReps.iSimMax){
 					currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] = currentReps.binContents[iReps][paramsWE.fluxBin];
 				}
@@ -259,7 +240,7 @@ double fluxes(struct replicas currentReps, struct paramsOUWeightedEnsemble param
 	}
 	
 	
-	for(iReps = 0; iReps < currentReps.binContentsMax[paramsWE.fluxBin]; iReps++;){
+	for(int iReps = 0; iReps < currentReps.binContentsMax[paramsWE.fluxBin]; iReps++){
 		currentReps.binContents[iReps][paramsWE.fluxBin] = NAN;
 	}
 	currentReps.binContentsMax[paramsWE.fluxBin] = 0;
@@ -272,12 +253,68 @@ int main(){
 	struct paramsOUDynamicsEngine paramsDeOu;
 	struct replicas Reps;
 	
-	double fluxes[paramsWeOu.tauMax];
-	int tau1 = paramsWeOu.tauMax / 4;
+	//Load parameters from files
+	FILE *DEFile, *WEFile, *BINFile; 
+	DEFile = fopen("dynamicsParams.txt","r");
+	WEFile = fopen("WEParams.txt","r");
+	BINFile = fopen("Bins.txt","r");
+	if(DEFile == NULL){
+		perror("fopen(DEFile)");
+		return 1;
+	}
+	if(WEFile == NULL){
+		perror("fopen(WEFile)");
+		return 1;
+	}
+	if(BINFile == NULL){
+		perror("fopen(BINFile)");
+		return 1;
+	}
+	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu.tau, &paramsWeOu.repsPerBin, &paramsWeOu.tauMax, &paramsWeOu.nBins, &paramsWeOu.fluxBin);
+	fscanf(DEFile, "%lf %lf %lf", &paramsDeOu.dt, &paramsDeOu.tauSlow, &paramsDeOu.sigmaX);
+	double binLoad[paramsWeOu.nBins+1];
+	for(int j = 0; j<=paramsWeOu.nBins;j++){
+		fscanf(BINFile, "%lf,",&binLoad[j]);
+		paramsWeOu.binDefs[j] = binLoad[j];
+	}
+	fclose(DEFile);
+	fclose(WEFile);
+	fclose(BINFile);
+	
+	
+	int tau1 = paramsWeOu.tauMax / 4; //Sets number of steps for converging and data taking
 	int tauM = paramsWeOu.tauMax;
-	for(nWE = 1; nWE<tau1; nWE++){
-		for(iSim = 0; iSim < rep.iSimMax;iSim++;){
-			
+	double tauFluxes[TAUMAX] = {0};
+
+	initialDistOU(paramsWeOu, paramsWeOu.repsPerBin,Reps);
+	for(int nWE = 0; nWE<tau1; nWE++){
+		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
+		splitMerge(Reps,paramsWeOu);
+		for(int iBin = 0; iBin < Reps.nBins; iBin++){
+			Reps.binContentsMax[iBin] = 0;
+		}
+		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
+			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
+			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
+			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
+			Reps.binContentsMax[Reps.binLocs[iSim]]++;
+		}
+		
+	}
+	
+	for(int nWE = tau1; nWE<tauM; nWE++){
+		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
+		splitMerge(Reps,paramsWeOu);
+		tauFluxes[tauM-nWE] = fluxes(Reps, paramsWeOu);
+		for(int iBin = 0; iBin < Reps.nBins; iBin++){
+			Reps.binContentsMax[iBin] = 0;
+		}
+		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
+			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
+			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
+			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
+			Reps.binContentsMax[Reps.binLocs[iSim]]++;
 		}
 	}
+	return 0;
 }
