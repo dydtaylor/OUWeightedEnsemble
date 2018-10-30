@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
@@ -248,73 +250,80 @@ double fluxes(struct replicas currentReps, struct paramsOUWeightedEnsemble param
 	return fluxOut;
 }
 
-int main(){
-	struct paramsOUWeightedEnsemble paramsWeOu;
+int main(int argc, char *argv[]){
+	
+	int userBins = atoi(argv[1]); 
+	printf("userBins loaded \n");
+	//User specifies how many bins are going to be used, allows memory to be allocated appropriately given the FAM in WE struct
+	
+	struct paramsOUWeightedEnsemble *paramsWeOu = malloc(sizeof(*paramsWeOu) + userBins * sizeof(double));
+	printf("WeOu allocated \n");
 	struct paramsOUDynamicsEngine paramsDeOu;
-	struct replicas Reps;
+	struct replicas *Reps = malloc(sizeof(struct replicas));
 	
 	//Load parameters from files
 	FILE *DEFile, *WEFile, *BINFile; 
 	DEFile = fopen("dynamicsParams.txt","r");
 	WEFile = fopen("WEParams.txt","r");
 	BINFile = fopen("Bins.txt","r");
-	if(DEFile == NULL){
-		perror("fopen(DEFile)");
-		return 1;
-	}
-	if(WEFile == NULL){
-		perror("fopen(WEFile)");
-		return 1;
-	}
-	if(BINFile == NULL){
-		perror("fopen(BINFile)");
-		return 1;
-	}
-	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu.tau, &paramsWeOu.repsPerBin, &paramsWeOu.tauMax, &paramsWeOu.nBins, &paramsWeOu.fluxBin);
+	
+	printf("Files opened \n");
+	
+	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu->tau, &paramsWeOu->repsPerBin, &paramsWeOu->tauMax, &paramsWeOu->nBins, &paramsWeOu->fluxBin);
 	fscanf(DEFile, "%lf %lf %lf", &paramsDeOu.dt, &paramsDeOu.tauSlow, &paramsDeOu.sigmaX);
-	double binLoad[paramsWeOu.nBins+1];
-	for(int j = 0; j<=paramsWeOu.nBins;j++){
+	double binLoad[paramsWeOu->nBins+1];
+	for(int j = 0; j<=paramsWeOu->nBins;j++){
 		fscanf(BINFile, "%lf,",&binLoad[j]);
-		paramsWeOu.binDefs[j] = binLoad[j];
+		paramsWeOu->binDefs[j] = binLoad[j];
 	}
 	fclose(DEFile);
 	fclose(WEFile);
 	fclose(BINFile);
 	
+	printf("Files loaded and closed \n");
 	
-	int tau1 = paramsWeOu.tauMax / 4; //Sets number of steps for converging and data taking
-	int tauM = paramsWeOu.tauMax;
+	int tau1 = paramsWeOu->tauMax / 4; //Sets number of steps for converging and data taking
+	int tauM = paramsWeOu->tauMax;
 	double tauFluxes[TAUMAX] = {0};
-
-	initialDistOU(paramsWeOu, paramsWeOu.repsPerBin,Reps);
+	
+	printf("Tau loops + flux vector made \n");
+	
+	int testInt = findBin(0.0, userBins, *paramsWeOu);
+	
+	printf("Find Bin Location = %i \n",testInt);
+	
+	initialDistOU(*paramsWeOu, paramsWeOu->repsPerBin,*Reps);
+	
+	printf("Initial Distribution Made \n");
 	for(int nWE = 0; nWE<tau1; nWE++){
 		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
-		splitMerge(Reps,paramsWeOu);
-		for(int iBin = 0; iBin < Reps.nBins; iBin++){
-			Reps.binContentsMax[iBin] = 0;
+		splitMerge(*Reps,*paramsWeOu);
+		for(int iBin = 0; iBin < Reps->nBins; iBin++){
+			Reps->binContentsMax[iBin] = 0;
 		}
-		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
-			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
-			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
-			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
-			Reps.binContentsMax[Reps.binLocs[iSim]]++;
+		for(int iSim = 0; iSim < Reps->iSimMax;iSim++){
+			Reps->sims[iSim] = dynamicsEngine(Reps->sims[iSim],paramsDeOu, *paramsWeOu);
+			Reps->binLocs[iSim] = findBin(Reps->sims[iSim],Reps->nBins, *paramsWeOu);
+			Reps->binContents[Reps->binContentsMax[Reps->binLocs[iSim]]][Reps->binLocs[iSim]] = iSim;
+			Reps->binContentsMax[Reps->binLocs[iSim]]++;
 		}
 		
 	}
 	
 	for(int nWE = tau1; nWE<tauM; nWE++){
 		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
-		splitMerge(Reps,paramsWeOu);
-		tauFluxes[tauM-nWE] = fluxes(Reps, paramsWeOu);
-		for(int iBin = 0; iBin < Reps.nBins; iBin++){
-			Reps.binContentsMax[iBin] = 0;
+		splitMerge(*Reps,*paramsWeOu);
+		tauFluxes[tauM-nWE] = fluxes(*Reps, *paramsWeOu);
+		for(int iBin = 0; iBin < Reps->nBins; iBin++){
+			Reps->binContentsMax[iBin] = 0;
 		}
-		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
-			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
-			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
-			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
-			Reps.binContentsMax[Reps.binLocs[iSim]]++;
+		for(int iSim = 0; iSim < Reps->iSimMax;iSim++){
+			Reps->sims[iSim] = dynamicsEngine(Reps->sims[iSim],paramsDeOu, *paramsWeOu);
+			Reps->binLocs[iSim] = findBin(Reps->sims[iSim],Reps->nBins, *paramsWeOu);
+			Reps->binContents[Reps->binContentsMax[Reps->binLocs[iSim]]][Reps->binLocs[iSim]] = iSim;
+			Reps->binContentsMax[Reps->binLocs[iSim]]++;
 		}
+		
 	}
 	return 0;
 }
