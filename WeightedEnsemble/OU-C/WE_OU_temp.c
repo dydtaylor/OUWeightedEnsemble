@@ -14,10 +14,10 @@
 #define NUM_ROWS(a) ARRAYSIZE(a)
 #define NUM_COLS(a) ARRAYSIZE(a[0])
 
-#define NBINSMAX 1000
-#define BINCONTENTSMAXMAX 1000
-#define ISIMMAXMAX 100000 /*NBINSMAX * BINCONTENTSMAXMAX */
-#define TAUMAX 1000000
+#define NBINSMAX 100
+#define BINCONTENTSMAXMAX 100
+#define ISIMMAXMAX 10000 /*NBINSMAX * BINCONTENTSMAXMAX */
+#define TAUMAX 100
 
 
 struct paramsOUWeightedEnsemble{
@@ -64,9 +64,11 @@ int findBin(double rep, int nBins, struct paramsOUWeightedEnsemble paramsWE){
 	In main, we will completely rewrite the table of contents each time.*/
 	int binInside;
 		for(int iBin = 0; iBin < nBins; iBin++){
+			printf("bin checked: %i \n", iBin+1);
 			if((rep < paramsWE.binDefs[iBin+1]) && (rep > paramsWE.binDefs[iBin])){
-				binInside = iBin;
+				binInside = iBin+1;
 				iBin = nBins;
+				printf("Bin Found, bin = %i \n", binInside);
 			}
 		}
 		
@@ -81,7 +83,8 @@ void initialDistOU(struct paramsOUWeightedEnsemble params, int nInit, struct rep
 	*/
 	
 	double startLocation = 0; //Can Call 
-	int startBin = findBin(startLocation,params.nBins, params); //
+	int startBin;
+	startBin = findBin(startLocation,params.nBins, params);
 
 	
 	/*117-119 is also unnecessary, sets values for locations that don't need to be set, 120 is necessary*/
@@ -216,52 +219,17 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 	return;
 }
 
-double fluxes(struct replicas currentReps, struct paramsOUWeightedEnsemble paramsWE){
-	double fluxOut = 0;
-	int nFlux = currentReps.binContentsMax[paramsWE.fluxBin];
-	
-	for(int iReps = 0; iReps < nFlux; iReps++){
-		if(currentReps.binLocs[iReps] == paramsWE.fluxBin){
-			fluxOut = fluxOut + currentReps.weights[currentReps.binContents[iReps][paramsWE.fluxBin]];
-			currentReps.sims[currentReps.binContents[iReps][paramsWE.fluxBin]] = currentReps.sims[currentReps.iSimMax];
-			currentReps.weights[currentReps.binContents[iReps][paramsWE.fluxBin]] = currentReps.weights[currentReps.iSimMax];
-			currentReps.binLocs[currentReps.binContents[iReps][paramsWE.fluxBin]] = currentReps.binLocs[currentReps.iSimMax];
-			
-			/*Find iSimMax in binContents and replace it with keptInd[1]*/
-			for(int iSimMaxReplace = 0; iSimMaxReplace < currentReps.binContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++){
-				if(currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] == currentReps.iSimMax){
-					currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] = currentReps.binContents[iReps][paramsWE.fluxBin];
-				}
-			}
-			
-			currentReps.sims[currentReps.iSimMax] = NAN;
-			currentReps.weights[currentReps.iSimMax] = NAN;
-			currentReps.binLocs[currentReps.iSimMax] = NAN;
-			currentReps.iSimMax--;
-			
-		}
-	}
-	
-	
-	for(int iReps = 0; iReps < currentReps.binContentsMax[paramsWE.fluxBin]; iReps++){
-		currentReps.binContents[iReps][paramsWE.fluxBin] = NAN;
-	}
-	currentReps.binContentsMax[paramsWE.fluxBin] = 0;
-	
-	return fluxOut;
-}
-
 int main(int argc, char *argv[]){
 	
 	//int userBins = atoi(argv[1]); 
-	printf("userBins loaded \n");
-	return 0;
-	//User specifies how many bins are going to be used, allows memory to be allocated appropriately given the FAM in WE struct
 	
 	struct paramsOUWeightedEnsemble paramsWeOu;
-	printf("WeOu allocated \n");
+	
 	struct paramsOUDynamicsEngine paramsDeOu;
 	struct replicas Reps;
+	int tau1, tauM, testInt;
+	double binLoad;
+	double tauFluxes[TAUMAX];
 	
 	//Load parameters from files
 	FILE *DEFile, *WEFile, *BINFile; 
@@ -273,10 +241,10 @@ int main(int argc, char *argv[]){
 	
 	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu.tau, &paramsWeOu.repsPerBin, &paramsWeOu.tauMax, &paramsWeOu.nBins, &paramsWeOu.fluxBin);
 	fscanf(DEFile, "%lf %lf %lf", &paramsDeOu.dt, &paramsDeOu.tauSlow, &paramsDeOu.sigmaX);
-	double binLoad[paramsWeOu.nBins+1];
+
 	for(int j = 0; j<=paramsWeOu.nBins;j++){
-		fscanf(BINFile, "%lf,",&binLoad[j]);
-		paramsWeOu.binDefs[j] = binLoad[j];
+		fscanf(BINFile, "%lf,",&binLoad);
+		paramsWeOu.binDefs[j] = binLoad;
 	}
 	fclose(DEFile);
 	fclose(WEFile);
@@ -284,48 +252,19 @@ int main(int argc, char *argv[]){
 	
 	printf("Files loaded and closed \n");
 	
-	int tau1 = paramsWeOu.tauMax / 4; //Sets number of steps for converging and data taking
-	int tauM = paramsWeOu.tauMax;
-	double tauFluxes[TAUMAX] = {0};
+	tau1 = paramsWeOu.tauMax / 4; //Sets number of steps for converging and data taking
+	tauM = paramsWeOu.tauMax;
 	
 	printf("Tau loops + flux vector made \n");
+
 	
-	int testInt = findBin(0.0, 5, paramsWeOu);
+	testInt = findBin(0.0, paramsWeOu.nBins, paramsWeOu);
 	
 	printf("Find Bin Location = %i \n",testInt);
 	
 	initialDistOU(paramsWeOu, paramsWeOu.repsPerBin, Reps);
 	
 	printf("Initial Distribution Made \n");
-	for(int nWE = 0; nWE<tau1; nWE++){
-		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
-		splitMerge(Reps,paramsWeOu);
-		for(int iBin = 0; iBin < Reps.nBins; iBin++){
-			Reps.binContentsMax[iBin] = 0;
-		}
-		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
-			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
-			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
-			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
-			Reps.binContentsMax[Reps.binLocs[iSim]]++;
-		}
-		
-	}
-	
-	for(int nWE = tau1; nWE<tauM; nWE++){
-		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
-		splitMerge(Reps,paramsWeOu);
-		tauFluxes[tauM-nWE] = fluxes(Reps, paramsWeOu);
-		for(int iBin = 0; iBin < Reps.nBins; iBin++){
-			Reps.binContentsMax[iBin] = 0;
-		}
-		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
-			Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
-			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
-			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
-			Reps.binContentsMax[Reps.binLocs[iSim]]++;
-		}
-		
-	}
 	return 0;
+	//User specifies how many bins are going to be used, allows memory to be allocated appropriately given the FAM in WE struct
 }
