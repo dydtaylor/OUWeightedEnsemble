@@ -14,18 +14,17 @@
 #define NUM_ROWS(a) ARRAYSIZE(a)
 #define NUM_COLS(a) ARRAYSIZE(a[0])
 
-#define NBINSMAX 100
-#define BINCONTENTSMAXMAX 100
-#define ISIMMAXMAX 10000 /*NBINSMAX * BINCONTENTSMAXMAX */
-#define TAUMAX 100
+#define NBINSMAX 6
+#define BINCONTENTSMAXMAX 24
+#define ISIMMAXMAX 100 /*NBINSMAX * BINCONTENTSMAXMAX */
 
 
 struct paramsOUWeightedEnsemble{
-	int tau; //In units of dt: e.g. if dt=.01, tau=.1, then this value should be .1/.01 = 10;
-	int repsPerBin;
-	int tauMax; //Number of weighted ensemble steps to do, max sim time. If tauMax = 1000, tau = 10, dt = .005, then sim will end at t=tauMax*tau*dt = 50;
-	int nBins;
-	int fluxBin;
+	unsigned int tau; //In units of dt: e.g. if dt=.01, tau=.1, then this value should be .1/.01 = 10;
+	unsigned int repsPerBin;
+	unsigned int tauMax; //Number of weighted ensemble steps to do, max sim time. If tauMax = 1000, tau = 10, dt = .005, then sim will end at t=tauMax*tau*dt = 50;
+	unsigned int nBins;
+	unsigned int fluxBin;
 	double binDefs[NBINSMAX];
 };
 
@@ -45,6 +44,13 @@ struct replicas{
 	unsigned int iSimMax;
 };
 
+
+
+struct paramsOUWeightedEnsemble paramsWeOu;
+struct paramsOUDynamicsEngine paramsDeOu;
+struct replicas Reps;
+
+
 double dynamicsEngine(double x, struct paramsOUDynamicsEngine paramsDE, struct paramsOUWeightedEnsemble paramsWE){
 	double U1, U2, Z1, Z2;
 	double xOut;
@@ -62,20 +68,19 @@ double dynamicsEngine(double x, struct paramsOUDynamicsEngine paramsDE, struct p
 int findBin(double rep, int nBins, struct paramsOUWeightedEnsemble paramsWE){
 	/*Rewritten to only return a single integer for a single simulation (new binLocs for that index). 
 	In main, we will completely rewrite the table of contents each time.*/
+
 	int binInside;
 		for(int iBin = 0; iBin < nBins; iBin++){
-			printf("bin checked: %i \n", iBin+1);
-			if((rep < paramsWE.binDefs[iBin+1]) && (rep > paramsWE.binDefs[iBin])){
-				binInside = iBin+1;
+			if((rep <= paramsWE.binDefs[iBin+1]) && (rep > paramsWE.binDefs[iBin])){
+				binInside = iBin;
 				iBin = nBins;
-				printf("Bin Found, bin = %i \n", binInside);
 			}
 		}
 		
 	return binInside;
 }
 
-void initialDistOU(struct paramsOUWeightedEnsemble params, int nInit, struct replicas repsInit){
+void initialDistOU(int nInit){
 	/* 
 	This function currently sets the initial replicas to all be at x = 0.
 	Obviously needs to be changed to actually draw random numbers if we want to take from the true dist.
@@ -84,34 +89,34 @@ void initialDistOU(struct paramsOUWeightedEnsemble params, int nInit, struct rep
 	
 	double startLocation = 0; //Can Call 
 	int startBin;
-	startBin = findBin(startLocation,params.nBins, params);
+	startBin = findBin(startLocation,paramsWeOu.nBins, paramsWeOu);
 
 	
 	/*117-119 is also unnecessary, sets values for locations that don't need to be set, 120 is necessary*/
-	for(int jBins = 0; jBins<params.nBins; jBins++){
-		repsInit.binContentsMax[jBins] = 0;
+	for(int jBins = 0; jBins<paramsWeOu.nBins; jBins++){
+		Reps.binContentsMax[jBins] = 0;
 	}
 	
 	for(int j = 0; j < nInit; j++){
-		repsInit.sims[j] = startLocation;
-		repsInit.weights[j] = 1/nInit;
-		repsInit.binLocs[j] = startBin;
-		repsInit.binContents[j][startBin] = j;
+		Reps.sims[j] = startLocation;
+		Reps.weights[j] = (double) 1/nInit;
+		Reps.binLocs[j] = startBin;
+		Reps.binContents[j][startBin] = j;
 	}
 	
 	/*Want to rewrite this with the intention of modifying a struct without creating simsInit etc. Works once we malloc at the beginning of main.*/
 	
-	repsInit.binContentsMax[startBin] = nInit;
-	repsInit.nBins = params.nBins;
-	repsInit.iSimMax = nInit;
+	Reps.binContentsMax[startBin] = nInit;
+	Reps.nBins = paramsWeOu.nBins;
+	Reps.iSimMax = nInit - 1;
 	return;
 }
 
-void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble params){
+void splitMerge(){
 	
-	int binMax = 0;
-	int binMin = currentReps.nBins;
-	int dummyInd;/*Just a dummy index that will hold the current index location in both split and merge loop*/
+	int binMin = 0;
+	int binMax = Reps.nBins;
+	unsigned int dummyInd;/*Just a dummy index that will hold the current index location in both split and merge loop*/
 	int rowCol[3]; /* YET ANOTHER dummy that tells me which columns in the bincontents row will be combined together, with the third element giving the deleted column*/
 	int mergeInd[2]; /* Array containing indices of 2 elements to be merged*/
 	int keptInd[2]; /*Previous array, reordered s.t. the first index is the one that will be kept*/
@@ -127,26 +132,27 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 		/*Initialize the merge indices with the first 2 indices stored in appropriate BinContents row*/
 
 		
-		
-		while((currentReps.binContentsMax[mergeBin]>params.repsPerBin) && currentReps.binContentsMax[mergeBin] > 0){
-			mergeInd[0] = currentReps.binContents[0][mergeBin];
-			mergeInd[1] = currentReps.binContents[1][mergeBin];
+		//printf("Checking bin %d for merging \n", mergeBin);
+		while((Reps.binContentsMax[mergeBin]>paramsWeOu.repsPerBin) && Reps.binContentsMax[mergeBin] > 0){
+			//printf("Undergoing merge \n");
+			mergeInd[0] = Reps.binContents[0][mergeBin];
+			mergeInd[1] = Reps.binContents[1][mergeBin];
 			/*Find the locations of the two smallest weights and combine them together*/
-			for(int repInBin = 0; repInBin < currentReps.binContentsMax[mergeBin];repInBin++){ //NUM_Rows needs to change to an appropriate BCM statement
+			for(int repInBin = 0; repInBin < Reps.binContentsMax[mergeBin];repInBin++){ //NUM_Rows needs to change to an appropriate BCM statement
 				
-				dummyInd = currentReps.binContents[repInBin][mergeBin];
+				dummyInd = Reps.binContents[repInBin][mergeBin];
 				/*If the weight of this index is greater than the weight in the first merge index,
 				but smaller than the weight in the second index, then replace the first merge index with the new index
 				
 				Otherwise, if the weight of the dummy index is greater than the weight in the 2nd index, then replace the second 
 				index with the new index
 				*/
-				if((currentReps.weights[dummyInd] < currentReps.weights[mergeInd[0]])&&(currentReps.weights[dummyInd] > currentReps.weights[mergeInd[1]])){
+				if((Reps.weights[dummyInd] < Reps.weights[mergeInd[0]])&&(Reps.weights[dummyInd] > Reps.weights[mergeInd[1]])){
 					mergeInd[0] = dummyInd;
 					rowCol[0] = repInBin;
 				
 				}  
-				else if(currentReps.weights[dummyInd] < currentReps.weights[mergeInd[1]]){
+				else if(Reps.weights[dummyInd] < Reps.weights[mergeInd[1]]){
 					mergeInd[1] = dummyInd;
 					rowCol[1] = repInBin;
 				
@@ -154,7 +160,7 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 			}
 			
 			/*Decide which index to keep*/
-			p0 = currentReps.weights[mergeInd[0]] / (currentReps.weights[mergeInd[0]]+currentReps.weights[mergeInd[1]]);
+			p0 = Reps.weights[mergeInd[0]] / (Reps.weights[mergeInd[0]]+Reps.weights[mergeInd[1]]);
 			randPull = RAND;
 			if(randPull<p0){
 				keptInd[0] = mergeInd[0];
@@ -168,71 +174,114 @@ void splitMerge(struct replicas currentReps, struct paramsOUWeightedEnsemble par
 			}
 			
 			/*Update weight of the kept index*/
-			currentReps.weights[keptInd[0]] = currentReps.weights[keptInd[0]] + currentReps.weights[keptInd[1]];
+			if( (Reps.weights[keptInd[0]]!=Reps.weights[keptInd[0]]) || (Reps.weights[keptInd[1]]!=Reps.weights[keptInd[1]])){
+				printf("WARNING: Moving NAN Weight \n");
+			}
+			Reps.weights[keptInd[0]] = Reps.weights[keptInd[0]] + Reps.weights[keptInd[1]];
 			
 			/*Replace the old simulation with the final non-NAN simulation*/
-			currentReps.sims[keptInd[1]] = currentReps.sims[currentReps.iSimMax];
-			currentReps.weights[keptInd[1]] = currentReps.weights[currentReps.iSimMax];
-			currentReps.binLocs[keptInd[1]] = currentReps.binLocs[currentReps.iSimMax];
+
+			if(Reps.weights[Reps.iSimMax] != Reps.weights[Reps.iSimMax]){
+				printf("WARNING: Moving NAN Weight \n");
+			}
 			
 			/*Find iSimMax in binContents and replace it with keptInd[1]*/
-			for(int iSimMaxReplace = 0; iSimMaxReplace < currentReps.binContentsMax[currentReps.binLocs[currentReps.iSimMax]];iSimMaxReplace++){
-				if(currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] == currentReps.iSimMax){
-					currentReps.binContents[iSimMaxReplace][currentReps.binLocs[currentReps.iSimMax]] = keptInd[1];
+			for(int iSimMaxReplace = 0; iSimMaxReplace < Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];iSimMaxReplace++){
+				if(Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] == Reps.iSimMax){
+					Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] = keptInd[1];
 				}
 			}
+			
+			Reps.sims[keptInd[1]] = Reps.sims[Reps.iSimMax];
+			Reps.weights[keptInd[1]] = Reps.weights[Reps.iSimMax];
+			Reps.binLocs[keptInd[1]] = Reps.binLocs[Reps.iSimMax];
+			
 			//Setting things to NAN is technically unnecessary
 			/*Remove the duplicate non-NAN simulation at the end of the non-NANs*/
-			currentReps.sims[currentReps.iSimMax] = NAN;
-			currentReps.weights[currentReps.iSimMax] = NAN;
-			currentReps.binLocs[currentReps.iSimMax] = NAN;
-			currentReps.iSimMax--;
+			Reps.sims[Reps.iSimMax] = NAN;
+			Reps.weights[Reps.iSimMax] = NAN;
+			Reps.binLocs[Reps.iSimMax] = NAN;
+			Reps.iSimMax--;
+			printf("iSimMax decreased. iSimMax = %d \n", Reps.iSimMax);
 			
 			/*Reorganize the binContents matrix*/
-			currentReps.binContents[rowCol[2]][mergeBin] = currentReps.binContents[currentReps.binContentsMax[mergeBin]][mergeBin];
-			currentReps.binContents[currentReps.binContentsMax[mergeBin]][mergeBin] = NAN;
-			currentReps.binContentsMax[mergeBin]--;
+			Reps.binContents[rowCol[2]][mergeBin] = Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin];
+			Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin] = NAN;
+			Reps.binContentsMax[mergeBin]--;
 		}
 	}
 	
 	
 	/*Splitting Loop*/
 	for(int splitBin = binMin; splitBin < binMax; splitBin++){
-
-		while((currentReps.binContentsMax[splitBin]<params.repsPerBin)&&(currentReps.binContentsMax[splitBin]>0)){
-			splitInd = currentReps.binContents[0][splitBin];
-			for(int repInBin = 0; repInBin < currentReps.binContentsMax[splitBin];repInBin++){
-				dummyInd = currentReps.binContents[repInBin][splitBin];
-				if(currentReps.weights[dummyInd]>currentReps.weights[splitInd]){
+		//printf("Checking bin %d for splitting \n", splitBin);
+		while((Reps.binContentsMax[splitBin]<paramsWeOu.repsPerBin)&&(Reps.binContentsMax[splitBin]>0)){
+			//printf("Undergoing split \n");
+			splitInd = Reps.binContents[0][splitBin];
+			for(int repInBin = 0; repInBin < Reps.binContentsMax[splitBin];repInBin++){
+				dummyInd = Reps.binContents[repInBin][splitBin];
+				if(Reps.weights[dummyInd]>Reps.weights[splitInd]){
 					splitInd = dummyInd;
 				}
 			}
-			currentReps.sims[currentReps.iSimMax+1] = currentReps.sims[splitInd];
-			currentReps.weights[splitInd] = currentReps.weights[splitInd] / 2;
-			currentReps.weights[currentReps.iSimMax+1] = currentReps.weights[splitInd];
-			currentReps.binLocs[currentReps.iSimMax+1] = currentReps.binLocs[splitInd];
-			currentReps.iSimMax++;
-			currentReps.binContents[currentReps.binContentsMax[splitBin]][splitBin] = currentReps.iSimMax;
-			currentReps.binContentsMax[splitBin]++;
+			Reps.sims[Reps.iSimMax+1] = Reps.sims[splitInd];
+			Reps.weights[splitInd] = Reps.weights[splitInd] / 2;
+			Reps.weights[Reps.iSimMax+1] = Reps.weights[splitInd];
+			Reps.binLocs[Reps.iSimMax+1] = Reps.binLocs[splitInd];
+			Reps.iSimMax++;
+			//printf("iSimMax increased. iSimMax = %d \n", Reps.iSimMax);
+			Reps.binContents[-1+Reps.binContentsMax[splitBin]][splitBin] = Reps.iSimMax;
+			Reps.binContentsMax[splitBin]++;
 		}
 	}
 	return;
+}
+
+double fluxes(){
+	double fluxOut = 0;
+	int nFlux = Reps.binContentsMax[paramsWeOu.fluxBin];
+	
+	for(int iReps = 0; iReps < nFlux; iReps++){
+		if(Reps.binLocs[iReps] == paramsWeOu.fluxBin){
+			fluxOut = fluxOut + Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]];
+			Reps.sims[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.sims[Reps.iSimMax];
+			Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.weights[Reps.iSimMax];
+			Reps.binLocs[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.binLocs[Reps.iSimMax];
+			
+			/*Find iSimMax in binContents and replace it with keptInd[1]*/
+			for(int iSimMaxReplace = 0; iSimMaxReplace < Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];iSimMaxReplace++){
+				if(Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] == Reps.iSimMax){
+					Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] = Reps.binContents[iReps][paramsWeOu.fluxBin];
+				}
+			}
+			
+			Reps.sims[Reps.iSimMax] = NAN;
+			Reps.weights[Reps.iSimMax] = NAN;
+			Reps.binLocs[Reps.iSimMax] = NAN;
+			Reps.iSimMax--;
+			
+		}
+	}
+	
+	
+	for(int iReps = 0; iReps < Reps.binContentsMax[paramsWeOu.fluxBin]; iReps++){
+		Reps.binContents[iReps][paramsWeOu.fluxBin] = NAN;
+	}
+	Reps.binContentsMax[paramsWeOu.fluxBin] = 0;
+	
+	return fluxOut;
 }
 
 int main(int argc, char *argv[]){
 	
 	//int userBins = atoi(argv[1]); 
 	
-	struct paramsOUWeightedEnsemble paramsWeOu;
-	
-	struct paramsOUDynamicsEngine paramsDeOu;
-	struct replicas Reps;
+
 	int tau1, tauM, testInt;
 	double binLoad;
-	double tauFluxes[TAUMAX];
 	
 	//Load parameters from files
-	FILE *DEFile, *WEFile, *BINFile; 
+	FILE *DEFile, *WEFile, *BINFile, *FLFile, *SIMFile; 
 	DEFile = fopen("dynamicsParams.txt","r");
 	WEFile = fopen("WEParams.txt","r");
 	BINFile = fopen("Bins.txt","r");
@@ -242,10 +291,11 @@ int main(int argc, char *argv[]){
 	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu.tau, &paramsWeOu.repsPerBin, &paramsWeOu.tauMax, &paramsWeOu.nBins, &paramsWeOu.fluxBin);
 	fscanf(DEFile, "%lf %lf %lf", &paramsDeOu.dt, &paramsDeOu.tauSlow, &paramsDeOu.sigmaX);
 
-	for(int j = 0; j<=paramsWeOu.nBins;j++){
+	for(int j = 0; j<=(paramsWeOu.nBins);j++){
 		fscanf(BINFile, "%lf,",&binLoad);
 		paramsWeOu.binDefs[j] = binLoad;
 	}
+	
 	fclose(DEFile);
 	fclose(WEFile);
 	fclose(BINFile);
@@ -259,12 +309,74 @@ int main(int argc, char *argv[]){
 
 	
 	testInt = findBin(0.0, paramsWeOu.nBins, paramsWeOu);
-	
+	RanInitReturnIseed(0);
 	printf("Find Bin Location = %i \n",testInt);
 	
-	initialDistOU(paramsWeOu, paramsWeOu.repsPerBin, Reps);
+	initialDistOU(paramsWeOu.repsPerBin);
 	
 	printf("Initial Distribution Made \n");
+	printf("Initial Bin Location = %i \n", Reps.binLocs[0]);
+	for(int nWE = 0; nWE<tau1; nWE++){
+		printf("Tau Step: %i \n iSimMax %i \n", nWE, Reps.iSimMax); //Show in stdout how far along in the program we are
+		splitMerge();
+		if(Reps.iSimMax % 5 == 0){
+			printf("Warning, iSimMax might be out of bounds \n");
+		}
+		printf("Splitting + Merging Complete \n");
+		for(int iBin = 0; iBin < Reps.nBins; iBin++){
+			//printf("Bin %d has %d replicas inside \n", iBin, Reps.binContentsMax[iBin]);
+			Reps.binContentsMax[iBin] = 0;
+		}
+		for(int iSim = 0; iSim < Reps.iSimMax + 1;iSim++){
+			for(int dtN = 0; dtN < paramsWeOu.tau; dtN++){
+				if(Reps.sims[iSim] != Reps.sims[iSim]){
+					printf("WARNING, inputting NAN into dynamics engine \n");
+				}
+				if(Reps.weights[iSim] != Reps.weights[iSim]){
+					printf("Warning: NAN weight in active sims \n");
+				}
+				Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
+				if(Reps.sims[iSim] != Reps.sims[iSim]){
+					printf("WARNING, NAN output from dynamics engine \n");
+				}
+			}
+			//printf("Sim location: %f \n", Reps.sims[iSim]);
+			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
+			//printf("Sim Bin: %d \n", Reps.binLocs[iSim]);
+			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
+			Reps.binContentsMax[Reps.binLocs[iSim]]++;
+		}
+		
+	}
+	/*
+	for(int nWE = tau1; nWE<tauM; nWE++){
+		//printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
+		splitMerge();
+		//printf("Splitting + Merging Complete \n");
+		FLFile = fopen("fluxOut.txt","a");
+		fprintf(FLFile, "%f \n", fluxes());
+		fclose(FLFile);
+		for(int iBin = 0; iBin < Reps.nBins; iBin++){
+			Reps.binContentsMax[iBin] = 0;
+		}
+		for(int iSim = 0; iSim < Reps.iSimMax;iSim++){
+			for(int dtN = 0; dtN < paramsWeOu.tau; dtN++){
+				Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
+			}
+			//printf("Sim location: %f \n", Reps.sims[iSim]);
+			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
+			//printf("Sim Bin: %d \n", Reps.binLocs[iSim]);
+			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
+			Reps.binContentsMax[Reps.binLocs[iSim]]++;
+		}
+		
+	}
+	*/
+	SIMFile = fopen("simOut.txt", "w");
+	for(int j = 0; j < Reps.iSimMax; j++){
+		fprintf(SIMFile, "%E, %E \n", Reps.sims[j], Reps.weights[j]);
+	}
+	fclose(SIMFile);
 	return 0;
 	//User specifies how many bins are going to be used, allows memory to be allocated appropriately given the FAM in WE struct
 }

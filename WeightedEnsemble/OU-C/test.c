@@ -52,37 +52,6 @@ int findBin(double rep, int nBins, struct paramsOUWeightedEnsemble paramsWE){
 	return nBins;
 }
 
-void initialDistOU(struct paramsOUWeightedEnsemble params, int nInit, struct replicas repsInit){
-	/* 
-	This function currently sets the initial replicas to all be at x = 0.
-	Obviously needs to be changed to actually draw random numbers if we want to take from the true dist.
-	This most likely requires a loop?
-	*/
-	
-	double startLocation = 0; //Can Call 
-	int startBin = findBin(startLocation,params.nBins,params); //
-
-	
-	/*117-119 is also unnecessary, sets values for locations that don't need to be set, 120 is necessary*/
-	for(int jBins = 0; jBins<params.nBins; jBins++){
-		repsInit.binContentsMax[jBins] = 0;
-	}
-	
-	for(int j = 0; j < nInit; j++){
-		repsInit.sims[j] = startLocation;
-		repsInit.weights[j] = 1/nInit;
-		repsInit.binLocs[j] = startBin;
-		repsInit.binContents[j][startBin] = j;
-	}
-	
-	/*Want to rewrite this with the intention of modifying a struct without creating simsInit etc. Works once we malloc at the beginning of main.*/
-	
-	repsInit.binContentsMax[startBin] = nInit;
-	repsInit.nBins = params.nBins;
-	repsInit.iSimMax = nInit;
-	return;
-}
-
 
 int main(int argc, char *argv[]){
 	
