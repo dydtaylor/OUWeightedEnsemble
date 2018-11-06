@@ -259,26 +259,29 @@ void RanInit(int repeatable)
 long RanInitReturnIseed(int repeatable)
 {
     FILE *ip; // ISEED file
-    long iseed;
+    long iseed, currentSeed;
     
     ip =fopen("ISEED","r");//open the seed
     fscanf(ip,"%lx",&iseed);
     fclose(ip);
     
+    currentSeed = iseed;
+    
     if (iseed>0) iseed*= -1;
     init_genrand(iseed);
     
     /* printf("ISEED=%lx\n",iseed); */
+
+    iseed = genrand_int32();
     
     if(repeatable==0)
     {
-        iseed = genrand_int32();
         ip=fopen("ISEED","w");
         fprintf(ip,"%lx\n",iseed);
         fclose(ip);
     }
     
-    return iseed;
+    return currentSeed;
 }
 
 
