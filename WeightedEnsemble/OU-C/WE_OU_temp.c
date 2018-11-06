@@ -386,9 +386,9 @@ int main(int argc, char *argv[]){
 
 	
 	testInt = findBin(0.0, paramsWeOu.nBins, paramsWeOu);
-	RanInitReturnIseed(0);
+	printf("iseed=%lx\n", RanInitReturnIseed(1));
 	printf("Find Bin Location = %i \n",testInt);
-	
+    
 	initialDistOU(paramsWeOu.repsPerBin);
 	
 	printf("Initial Distribution Made \n");
