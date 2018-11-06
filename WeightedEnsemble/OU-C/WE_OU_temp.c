@@ -14,9 +14,9 @@
 #define NUM_ROWS(a) ARRAYSIZE(a)
 #define NUM_COLS(a) ARRAYSIZE(a[0])
 
-#define NBINSMAX 6
+#define NBINSMAX 8
 #define BINCONTENTSMAXMAX 24
-#define ISIMMAXMAX 100 /*NBINSMAX * BINCONTENTSMAXMAX */
+#define ISIMMAXMAX 30 /*NBINSMAX * BINCONTENTSMAXMAX */
 
 
 struct paramsOUWeightedEnsemble{
@@ -125,6 +125,7 @@ void splitMerge(){
 	
 	double p0; /*Doubles giving the merge probabilities*/
 	double randPull; /*Double storing a pull from RAND*/
+	double weightSum;
 	
 	
 	/*Merging loop*/
@@ -152,10 +153,13 @@ void splitMerge(){
 					rowCol[0] = repInBin;
 				
 				}  
-				else if(Reps.weights[dummyInd] < Reps.weights[mergeInd[1]]){
+				else if((Reps.weights[dummyInd] < Reps.weights[mergeInd[1]])&& mergeInd[0] != dummyInd){
 					mergeInd[1] = dummyInd;
 					rowCol[1] = repInBin;
 				
+				}
+				if(mergeInd[0] == mergeInd[1]){
+					printf("Merge Error \n");
 				}
 			}
 			
@@ -186,9 +190,51 @@ void splitMerge(){
 			}
 			
 			/*Find iSimMax in binContents and replace it with keptInd[1]*/
+			/*For loop: iterates through the row of the bin ISM is in. 
+			If: Checks to see if the index of the row we're iterating through is ISM. If it is, it replaces it with KI[1], the deleted index.
+			
+			The reason we replace ISM with the deleted index is for the incrementing nature of keeping track of the sims. 
+			We aren't deleting ISM, we're moving it to the spot where the deleted sim was.
+			
+			This has problems when the deleted sim is ISM. When that happens, I will take the last element of the table of contents and
+			move it to where ISM is in the table.*/
+			
+			int simMaxHolder;
+			
+			for(int i = 0; i < Reps.binContentsMax[mergeBin]-1;i++){
+				for(int j = i + 1; j< Reps.binContentsMax[mergeBin]; j++){
+					if(Reps.binContents[i][mergeBin]==Reps.binContents[j][mergeBin]){
+						printf("ERROR: Duplicate entries in BC \n");
+					}
+				}
+			}
+			
+			printf("Merge Ind: %d %d \n", mergeInd[0], mergeInd[1]);
+			printf("Kept Ind: %d %d \n", keptInd[0], keptInd[1]);
+			printf("RowCol: %d %d \n", rowCol[0], rowCol[1]);
+			printf("Bin Contents: ");
+			for(int i = 0; i < Reps.binContentsMax[mergeBin]; i++){
+				printf("%d , ", Reps.binContents[i][mergeBin]);
+			}
+			printf("\n");
+			
 			for(int iSimMaxReplace = 0; iSimMaxReplace < Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];iSimMaxReplace++){
 				if(Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] == Reps.iSimMax){
 					Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] = keptInd[1];
+					simMaxHolder = iSimMaxReplace;
+					iSimMaxReplace = Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];
+				}
+			}
+			
+			if (Reps.iSimMax ==keptInd[1]){
+				Reps.binContents[simMaxHolder][Reps.binLocs[Reps.iSimMax]] = Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]] - 1;
+			}
+			
+			for(int i = 0; i < Reps.binContentsMax[mergeBin]-1;i++){
+				for(int j = i + 1; j< Reps.binContentsMax[mergeBin]; j++){
+					if(Reps.binContents[i][mergeBin]==Reps.binContents[j][mergeBin]){
+						printf("ERROR: Duplicate entries in BC \n");
+					}
 				}
 			}
 			
@@ -208,6 +254,24 @@ void splitMerge(){
 			Reps.binContents[rowCol[2]][mergeBin] = Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin];
 			Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin] = NAN;
 			Reps.binContentsMax[mergeBin]--;
+			
+			for(int i = 0; i < Reps.binContentsMax[mergeBin]-1;i++){
+				for(int j = i + 1; j< Reps.binContentsMax[mergeBin]; j++){
+					if(Reps.binContents[i][mergeBin]==Reps.binContents[j][mergeBin]){
+						printf("ERROR: Duplicate entries in BC \n");
+					}
+				}
+			}
+			
+			
+			weightSum = 0;
+			for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
+				weightSum = weightSum + Reps.weights[jWeight];
+			}
+	
+			if(fabs(weightSum - 1) > 1e-6){
+				printf("ERROR: Weight sums to %f \n", weightSum);
+			}
 		}
 	}
 	
@@ -233,7 +297,22 @@ void splitMerge(){
 			Reps.binContents[-1+Reps.binContentsMax[splitBin]][splitBin] = Reps.iSimMax;
 			Reps.binContentsMax[splitBin]++;
 		}
+	weightSum = 0;
+	for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
+		weightSum = weightSum + Reps.weights[jWeight];
 	}
+	
+	if(fabs(weightSum - 1) > 1e-6){
+		printf("ERROR: Weight sums to %f \n", weightSum);
+		weightSum = 0;
+		for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
+			weightSum = weightSum + Reps.weights[jWeight];
+		}
+		}
+	}
+	
+	//Normalize weights
+	
 	return;
 }
 
