@@ -126,6 +126,7 @@ void splitMerge(){
 	double p0; /*Doubles giving the merge probabilities*/
 	double randPull; /*Double storing a pull from RAND*/
 	double weightSum;
+	unsigned int binConPrev[BINCONTENTSMAXMAX][NBINSMAX];
 	
 	
 	/*Merging loop*/
@@ -136,6 +137,11 @@ void splitMerge(){
 		//printf("Checking bin %d for merging \n", mergeBin);
 		while((Reps.binContentsMax[mergeBin]>paramsWeOu.repsPerBin) && Reps.binContentsMax[mergeBin] > 0){
 			//printf("Undergoing merge \n");
+			for(int j = 0; j < BINCONTENTSMAXMAX; j++){
+				for(int i = 0; i < NBINSMAX; i++){
+					binConPrev[j][i]=Reps.binContents[j][i];
+				}
+			}
 			mergeInd[0] = Reps.binContents[0][mergeBin];
 			mergeInd[1] = Reps.binContents[1][mergeBin];
 			/*Find the locations of the two smallest weights and combine them together*/
@@ -230,14 +236,6 @@ void splitMerge(){
 				Reps.binContents[simMaxHolder][Reps.binLocs[Reps.iSimMax]] = Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]] - 1;
 			}
 			
-			for(int i = 0; i < Reps.binContentsMax[mergeBin]-1;i++){
-				for(int j = i + 1; j< Reps.binContentsMax[mergeBin]; j++){
-					if(Reps.binContents[i][mergeBin]==Reps.binContents[j][mergeBin]){
-						printf("ERROR: Duplicate entries in BC \n");
-					}
-				}
-			}
-			
 			Reps.sims[keptInd[1]] = Reps.sims[Reps.iSimMax];
 			Reps.weights[keptInd[1]] = Reps.weights[Reps.iSimMax];
 			Reps.binLocs[keptInd[1]] = Reps.binLocs[Reps.iSimMax];
@@ -251,7 +249,7 @@ void splitMerge(){
 			printf("iSimMax decreased. iSimMax = %d \n", Reps.iSimMax);
 			
 			/*Reorganize the binContents matrix*/
-			Reps.binContents[rowCol[2]][mergeBin] = Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin];
+			Reps.binContents[rowCol[2]][mergeBin] = Reps.binContents[Reps.binContentsMax[mergeBin] -1][mergeBin];
 			Reps.binContents[-1+Reps.binContentsMax[mergeBin]][mergeBin] = NAN;
 			Reps.binContentsMax[mergeBin]--;
 			
