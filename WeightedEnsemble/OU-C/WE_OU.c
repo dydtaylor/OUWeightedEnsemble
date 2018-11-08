@@ -17,7 +17,7 @@
 #define NBINSMAX 1000
 #define BINCONTENTSMAXMAX 2000
 #define ISIMMAXMAX 1000000 /*NBINSMAX * BINCONTENTSMAXMAX */
-#define TAUMAX 50000
+#define TAUMAX 20000
 
 
 struct paramsOUWeightedEnsemble{
@@ -57,13 +57,13 @@ FILE *errFile;
 double dynamicsEngine(double x, struct paramsOUDynamicsEngine paramsDE, struct paramsOUWeightedEnsemble paramsWE){
 	double U1, U2, Z1, Z2;
 	double xOut;
-	xOut = x;
+	xOut = 0;
 	for(int nt = 0; nt < paramsWE.tauMax; nt++){
 		U1 = RAND;
 		U2 = RAND;
 		Z1 = sqrt(-2*log(U1))*cos(2*PI*U2);
 		Z2 = sqrt(-2*log(U1))*sin(2*PI*U2);
-		xOut = xOut - 1/paramsDE.tauSlow * xOut * paramsDE.dt + paramsDE.sigmaX/sqrt(paramsDE.tauSlow) * sqrt(2*paramsDE.dt) * Z1;
+		xOut = x - 1/paramsDE.tauSlow * x * paramsDE.dt + paramsDE.sigmaX/sqrt(paramsDE.tauSlow) * sqrt(2*paramsDE.dt) * Z1;
 	}
 	return xOut;
 }
@@ -200,18 +200,6 @@ void splitMerge(){
 			
 			int simMaxHolder;
 			
-			/*printf("Merge Bin: %d \n", mergeBin);
-			printf("Merge Ind: %d %d \n", mergeInd[0], mergeInd[1]);
-			printf("Kept Ind: %d %d \n", keptInd[0], keptInd[1]);
-			printf("RowCol: %d %d \n", rowCol[0], rowCol[1]);
-			printf("Bin Contents: ");
-			
-			for(int i = 0; i < Reps.binContentsMax[mergeBin]; i++){
-				printf("%d , ", Reps.binContents[i][mergeBin]);
-			}
-			printf("\n");
-			printf("Bin Contents Max: %d \n", Reps.binContentsMax[mergeBin]);*/
-			
 			/*Find iSimMax in binContents and replace it with keptInd[1]*/
 			/*For loop: iterates through the row of the bin ISM is in. 
 			If: Checks to see if the index of the row we're iterating through is ISM. If it is, it replaces it with KI[1], the deleted index.
@@ -244,8 +232,6 @@ void splitMerge(){
 			Reps.weights[Reps.iSimMax] = NAN;
 			Reps.binLocs[Reps.iSimMax] = NAN;
 			Reps.iSimMax--;
-			printf("iSimMax = %d \n", Reps.iSimMax);
-			//printf("iSimMax decreased. iSimMax = %d \n", Reps.iSimMax);
 			
 			/*Reorganize the binContents matrix*/
 			Reps.binContents[rowCol[2]][mergeBin] = Reps.binContents[Reps.binContentsMax[mergeBin] -1][mergeBin];
@@ -278,11 +264,9 @@ void splitMerge(){
 			Reps.weights[Reps.iSimMax+1] = Reps.weights[splitInd];
 			Reps.binLocs[Reps.iSimMax+1] = Reps.binLocs[splitInd];
 			Reps.iSimMax++;
-			printf("iSimMax = %d \n", Reps.iSimMax);
 			if(Reps.iSimMax > ISIMMAXMAX){
 				printf("ERROR: iSimMax out of bounds");
 			}
-			//printf("iSimMax increased. iSimMax = %d \n", Reps.iSimMax);
 			Reps.binContents[-1+Reps.binContentsMax[splitBin]][splitBin] = Reps.iSimMax;
 			Reps.binContentsMax[splitBin]++;
 		}
@@ -318,11 +302,7 @@ double fluxes(){
 			Reps.sims[Reps.iSimMax] = NAN;
 			Reps.weights[Reps.iSimMax] = NAN;
 			Reps.binLocs[Reps.iSimMax] = NAN;
-			Reps.iSimMax--;
-			if(Reps.iSimMax > ISIMMAXMAX){
-				printf("ERROR: iSimMax out of bounds");
-			}
-			
+			Reps.iSimMax--;			
 		}
 	}
 	
@@ -336,14 +316,8 @@ double fluxes(){
 	int whilestep;
 
 	if(fluxOut != 0){
-		printf("Weight before: %E \n", weightSum);
-		printf("Weight lost: %E \n", fluxOut);
-		printf("Weight to scale: %E \n", newWeight);
-		printf("Rescale necessary \n");
-		printf("Error of %E \n", fabs(weightSum - 1));
 		whilestep = 0;
 		while(fabs(weightSum - 1)>1E-6){
-			printf("Rescale commencing \n");
 			weightPartialSum = 0; //This variable was introduced because of the above while loop
 			
 			for(int iSim = 0; iSim < Reps.iSimMax; iSim++){
@@ -353,7 +327,6 @@ double fluxes(){
 				for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
 				weightPartialSum = weightPartialSum + Reps.weights[jWeight];
 			}
-			printf("Weight after rescale: %E \n", weightPartialSum);
 			weightSum = weightPartialSum;
 			scaleFactor = 1/weightSum;
 		}
@@ -364,9 +337,12 @@ double fluxes(){
 
 int main(int argc, char *argv[]){
 	
-	
+	//Command line arguments: 1: File to record final simulations + weights
+	//2: File to record fluxes
+	//3: File to record errors
+	//4: Bit for repeating old simulation. 1= repeat, 0 = new seed
 
-	int tau1, tauM, testInt;
+	int tau1, tauM, testInt, rngBit;
 	double binLoad, weightSum;
 	
 	//Load parameters from files
@@ -374,7 +350,7 @@ int main(int argc, char *argv[]){
 	DEFile = fopen("dynamicsParams.txt","r");
 	WEFile = fopen("WEParams.txt","r");
 	BINFile = fopen("Bins.txt","r");
-	errFile = fopen("errFile", "w");
+	errFile = fopen(argv[3], "w");
 	
 	
 	fscanf(WEFile,"%i %i %i %i %i", &paramsWeOu.tau, &paramsWeOu.repsPerBin, &paramsWeOu.tauMax, &paramsWeOu.nBins, &paramsWeOu.fluxBin);
@@ -397,46 +373,31 @@ int main(int argc, char *argv[]){
 	
 	printf("Tau loops + flux vector made \n");
 
-	
-	testInt = findBin(0.0, paramsWeOu.nBins, paramsWeOu);
-	fprintf(errFile, "iseed=%lx\n", RanInitReturnIseed(1));
-    
+	rngBit = atoi(argv[4]);
+	fprintf(errFile, "iseed=%lx\n", RanInitReturnIseed(rngBit));
+    fclose(errFile);
 	initialDistOU(paramsWeOu.repsPerBin);
-	fluxes();
 	
 	printf("Initial Distribution Made \n");
 	printf("Initial Bin Location = %i \n", Reps.binLocs[0]);
+	double simHolder;
 	for(int nWE = 0; nWE<tau1; nWE++){
 		printf("Tau Step: %i \n", nWE); //Show in stdout how far along in the program we are
-		if(nWE== 3){
-			printf("don't be dumb \n");
-		}
 		splitMerge();
-		weightSum = 0;
-			for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
-				weightSum = weightSum + Reps.weights[jWeight];
-				}
-	
-			if(fabs(weightSum - 1) > 1e-6){
-				fprintf(errFile, "ERROR: Weight sums to %f. Tau = %d \n", weightSum, nWE);
-			}
-		//printf("Splitting + Merging Complete \n");
 		for(int iBin = 0; iBin < Reps.nBins; iBin++){
 			Reps.binContentsMax[iBin] = 0;
 		}
 		for(int iSim = 0; iSim < Reps.iSimMax + 1;iSim++){
 			for(int dtN = 0; dtN < paramsWeOu.tau; dtN++){
-				if(Reps.sims[iSim] != Reps.sims[iSim]){
-					fprintf(errFile, "WARNING, inputting NAN into dynamics engine. Tau = %d \n", nWE);
-				}
-				if(Reps.weights[iSim] != Reps.weights[iSim]){
-					fprintf(errFile, "Warning: NAN weight in active sims. Tau = %d \n", nWE);
+				simHolder = Reps.sims[iSim];
+				if(Reps.sims[iSim]!=Reps.sims[iSim]){
+					printf("NAN Error \n");
 				}
 				Reps.sims[iSim] = dynamicsEngine(Reps.sims[iSim],paramsDeOu, paramsWeOu);
 				if(Reps.sims[iSim] != Reps.sims[iSim]){
-					fprintf(errFile, "WARNING, NAN output from dynamics engine. Tau = %d \n", nWE);
+					printf("NAN Error \n");
 				}
-			};
+			}
 			Reps.binLocs[iSim] = findBin(Reps.sims[iSim],Reps.nBins, paramsWeOu);
 			Reps.binContents[Reps.binContentsMax[Reps.binLocs[iSim]]][Reps.binLocs[iSim]] = iSim;
 			Reps.binContentsMax[Reps.binLocs[iSim]]++;
@@ -445,17 +406,10 @@ int main(int argc, char *argv[]){
 	}
 	
 	for(int nWE = tau1; nWE<tauM; nWE++){
-		FLFile = fopen("fluxOut.txt","a");
+		printf("Tau Step: %i \n", nWE);
+		FLFile = fopen(argv[2],"a");
 		fprintf(FLFile, "%E \n", fluxes());
 		fclose(FLFile);
-		weightSum = 0;
-			for(int jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
-				weightSum = weightSum + Reps.weights[jWeight];
-				}
-	
-			if(fabs(weightSum - 1) > 1e-6){
-				fprintf(errFile, "ERROR: Weight sums to %f \n", weightSum);
-			}
 		splitMerge();
 		for(int iBin = 0; iBin < Reps.nBins; iBin++){
 			Reps.binContentsMax[iBin] = 0;
@@ -471,7 +425,7 @@ int main(int argc, char *argv[]){
 		
 	}
 	
-	SIMFile = fopen("simOut.txt", "w");
+	SIMFile = fopen(argv[1], "w");
 	for(int j = 0; j <= Reps.iSimMax; j++){
 	fprintf(SIMFile, "%E, %E \n", Reps.sims[j], Reps.weights[j]);
 	}
@@ -479,5 +433,4 @@ int main(int argc, char *argv[]){
 	
 
 	return 0;
-	//User specifies how many bins are going to be used, allows memory to be allocated appropriately given the FAM in WE struct
 }
