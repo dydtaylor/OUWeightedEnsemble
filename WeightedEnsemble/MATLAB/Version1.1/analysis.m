@@ -1,6 +1,7 @@
 %% Post-analysis
 analyticSolnVector = [];
 MFPTvector = zeros(5,10);
+fluxVector = NaN(5,10);
 endpts = [10,15,20,25];
 for j = 1:4
     for k = 1:10
@@ -8,6 +9,7 @@ for j = 1:4
     load(filename)
         if paramsWE.fluxBin >= 0
         meanFlux=mean(fluxAtTauStep(end/4:end)/(paramsWE.tau * paramsDE.dt));
+        fluxVector(j,k) = meanFlux;
         MFPTvector(j,k) = 1/meanFlux;
         end
     end
@@ -19,6 +21,7 @@ for k = 1:5
     load(filename)
         if paramsWE.fluxBin >= 0
         meanFlux=mean(fluxAtTauStep(end/4:end)/(paramsWE.tau * paramsDE.dt));
+        fluxVector(5,k) = meanFlux;
         MFPTvector(5,k) = 1/meanFlux;
         end
 end
