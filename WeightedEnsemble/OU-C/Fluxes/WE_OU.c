@@ -268,7 +268,7 @@ void splitMerge(){
 
 double fluxes(){
 	double fluxOut = 0;
-	double newWeight, weightSum, weightPartialSum, scaleFactor;
+	double weightSum;
 	int jWeight, iReps, iSimMaxReplace, iSim;
 	int nFlux = Reps.binContentsMax[paramsWeOu.fluxBin]; // Number of replicas in the fluxBin
 
@@ -277,54 +277,46 @@ double fluxes(){
 		weightSum = weightSum + Reps.weights[jWeight];
 	}
 
+	if(fabs(weightSum-1)>1e-6){
+		printf("Weight not conserved \n");
+	}
+	
 	// loop through replicas in flux bin and delete them
-	for(iReps = 0; iReps < nFlux; iReps++){
-		if(Reps.binLocs[iReps] == (paramsWeOu.fluxBin)){ // JUN COMMENT: Is this a validation check? Shouldn't all these be in the fluxbin?
-			fluxOut += Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]]; // JUN COMMENT: Use += notation?
-			newWeight = weightSum - fluxOut;
-			scaleFactor = 1/newWeight;
-			Reps.sims[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.sims[Reps.iSimMax];
-			Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.weights[Reps.iSimMax];
-			Reps.binLocs[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.binLocs[Reps.iSimMax];
+	if(nFlux>0){
+		for(iReps = nFlux -1; iReps >=0; iReps--){
+			 // JUN COMMENT: Is this a validation check? Shouldn't all these be in the fluxbin?
+				fluxOut += Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]]; // JUN COMMENT: Use += notation?
+				Reps.sims[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.sims[Reps.iSimMax];
+				Reps.weights[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.weights[Reps.iSimMax];
+				Reps.binLocs[Reps.binContents[iReps][paramsWeOu.fluxBin]] = Reps.binLocs[Reps.iSimMax];
 
-			/*Find iSimMax in binContents and replace it with keptInd[1]*/
-			for(iSimMaxReplace = 0; iSimMaxReplace < Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];iSimMaxReplace++){
-				if(Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] == Reps.iSimMax){
-					Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] = Reps.binContents[iReps][paramsWeOu.fluxBin];
+				
+				for(iSimMaxReplace = 0; iSimMaxReplace < Reps.binContentsMax[Reps.binLocs[Reps.iSimMax]];iSimMaxReplace++){
+					if(Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] == Reps.iSimMax){
+						Reps.binContents[iSimMaxReplace][Reps.binLocs[Reps.iSimMax]] = Reps.binContents[iReps][paramsWeOu.fluxBin];
+					}
 				}
-			}
 
-			Reps.sims[Reps.iSimMax] = NAN;
-			Reps.weights[Reps.iSimMax] = NAN;
-			Reps.binLocs[Reps.iSimMax] = NAN;
-			Reps.iSimMax--;
+				Reps.sims[Reps.iSimMax] = NAN;
+				Reps.weights[Reps.iSimMax] = NAN;
+				Reps.binLocs[Reps.iSimMax] = NAN;
+				Reps.iSimMax--;
+				Reps.binContentsMax[paramsWeOu.fluxBin]--;
 		}
 	}
 
-	for(iReps = 0; iReps < Reps.binContentsMax[paramsWeOu.fluxBin]; iReps++){
-		Reps.binContents[iReps][paramsWeOu.fluxBin] = NAN;
-		weightSum = weightSum - Reps.weights[iReps];
-	}
-	Reps.binContentsMax[paramsWeOu.fluxBin] = 0;
+	if(Reps.binContentsMax[paramsWeOu.fluxBin] != 0){
+			printf("Non Zero weight in flux bin \n");
+	};
 
 
 	// JUN COMMENT: I don't understand why this while loop is necessary. Find total weight in one for-loop, then adjust everyone's weight in a second for-loop?
 	if(fluxOut != 0){
-		
-			weightPartialSum = 0; //This variable was introduced because of the above while loop
 
 			for(iSim = 0; iSim < Reps.iSimMax; iSim++){
-				Reps.weights[iSim] = Reps.weights[iSim]*scaleFactor;
+				Reps.weights[iSim] = Reps.weights[iSim]/(weightSum-fluxOut);
 			}
-			weightPartialSum = 0;
-			for(jWeight = 0; jWeight <= Reps.iSimMax; jWeight++){
-				weightPartialSum += weightPartialSum + Reps.weights[jWeight]; // JUN COMMENT: Use += notation?
-			}
-			weightSum = weightPartialSum;
-			scaleFactor = 1/weightSum;
-		//if(fabs(weightSum - 1)>1E-6){
-			//printf("Weight Error: %E \n", fabs(weightSum - 1));
-		//}
+
 	}
 
 	return fluxOut;

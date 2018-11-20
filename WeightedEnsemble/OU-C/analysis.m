@@ -9,7 +9,7 @@ for j = 1:5
     if(isfile(filename))
         data=load(filename);
         if paramsWE.fluxBin >= 0
-        meanFlux=mean((data)/(paramsWE.tau * paramsDE.dt));
+        meanFlux=mean((data)/(paramsDE.dt));
         fluxvectorC(j,k) = meanFlux;
         MFPTvector(j,k) = 1/meanFlux;
         end
@@ -30,6 +30,10 @@ errorbar(10:5:30,MFPTavgs,errorVect,'o')
 hold on
 plot(10:5:30,analyticSolnVector)
 set(gca,'Yscale','log')
+title('OU MFPTs')
+xlabel('Distance from 0')
+ylabel('MFPT')
+legend('Measured MFPT','Analytic Solution')
 %Add in the equilibrium distribution
 % z = linspace(min(xout),max(xout));
 % pz =  exp(-z .^2 / (paramsModel.tauSlow * paramsModel.sigmax ^2))/sqrt(paramsModel.sigmax ^2 * pi * paramsModel.tauSlow);

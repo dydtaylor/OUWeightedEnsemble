@@ -5,7 +5,7 @@ sigmaX = 3.1385;
 
 wHBin = [];
 
-data = load('SteadyState/simOut.txt');
+data = load('SteadyState/simOut7.txt');
 
 %Sum the total WE weights contained in each histogram bin
 for n = histobins
